@@ -1,9 +1,13 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QPushButton, QLineEdit, QComboBox
 from PyQt5.QtGui import QPixmap, QIcon
 from PyQt5.QtCore import Qt
+
+from borrowings_window import BorrowingsWindow
 from db_manager import get_db_connection
 from book_card import BookCard
 from book_form import BookForm
+from readers_window import ReadersWindow
+
 
 class BookWindow(QWidget):
     def __init__(self, role, user_name="Гость", user_login=None):
@@ -101,6 +105,32 @@ class BookWindow(QWidget):
             btn_my_books.clicked.connect(self.open_issued_books)
             header_layout.addWidget(btn_my_books)
 
+        if role == "Admin":
+            btn_readers = QPushButton("Управление читателями")
+            btn_readers.setStyleSheet("""
+                QPushButton {
+                    background-color: #FFA500; 
+                    color: black; 
+                    font-weight: bold; 
+                    padding: 6px; 
+                    border-radius: 4px;
+                }
+                QPushButton:hover {
+                    background-color: #FF8C00;
+                }
+            """)
+            btn_readers.clicked.connect(self.open_readers_window)
+            header_layout.addWidget(btn_readers)
+
+        if role == "Librarian":
+            btn_borrowings = QPushButton("Управление выдачами")
+            btn_borrowings.clicked.connect(self.open_borrowings_window)
+            header_layout.addWidget(btn_borrowings)
+
+
+
+
+
         # Кнопка выхода
         btn_exit = QPushButton("Выйти")
         btn_exit.setFixedWidth(80)
@@ -136,6 +166,14 @@ class BookWindow(QWidget):
         main_layout.addWidget(self.scroll_area)
 
         self.load_books()
+
+    def open_readers_window(self):
+        self.readers_win = ReadersWindow()
+        self.readers_win.show()
+
+    def open_borrowings_window(self):
+        self.borrowings_win = BorrowingsWindow()
+        self.borrowings_win.show()
 
     def load_genres(self):
         self.genre_filter.clear()
@@ -245,6 +283,9 @@ class BookWindow(QWidget):
 
 
 
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea, QFrame
+from PyQt5.QtCore import Qt, QDate
+from db_manager import get_db_connection
 
 class IssuedBooksWindow(QWidget):
     def __init__(self, user_login):
@@ -269,7 +310,7 @@ class IssuedBooksWindow(QWidget):
         self.load_issued_books()
 
     def load_issued_books(self):
-        # Очищаем предыдущие карточки
+        # Очищаем
         while self.content_layout.count():
             item = self.content_layout.takeAt(0)
             w = item.widget()
@@ -280,7 +321,7 @@ class IssuedBooksWindow(QWidget):
             conn = get_db_connection()
             cur = conn.cursor()
 
-            # Получаем UserID по логину
+            # 1. Получаем UserID
             cur.execute("SELECT UserID FROM Users WHERE Login = ?", (self.user_login,))
             row = cur.fetchone()
             if not row:
@@ -291,28 +332,83 @@ class IssuedBooksWindow(QWidget):
                 return
             user_id = row[0]
 
-            # Получаем все выданные книги пользователя
-            # Берем только те записи, которые реально выданы (StatusID = 2 — 'Выдана')
+            # 2. Получаем все книги + даты и статусы
             query = """
-                SELECT b.BookID, b.Title, b.Author, g.GenreName, b.Publisher, b.Year, b.Quantity, b.Description, b.CoverImage
+                SELECT 
+                    b.BookID, b.Title, b.Author, g.GenreName, b.Publisher, b.Year, 
+                    b.Description, b.CoverImage,
+                    br.BorrowDate, br.DueDate, br.ReturnDate, br.StatusID
                 FROM Borrowings br
                 JOIN BorrowingItems bi ON br.BorrowingID = bi.BorrowingID
                 JOIN Books b ON bi.BookID = b.BookID
                 LEFT JOIN Genres g ON b.GenreID = g.GenreID
-                WHERE br.UserID = ? AND br.StatusID = 2
+                WHERE br.UserID = ?
+                ORDER BY br.BorrowDate DESC
             """
             cur.execute(query, (user_id,))
-            books = cur.fetchall()
+            rows = cur.fetchall()
             conn.close()
 
-            if not books:
-                label = QLabel("У вас пока нет выданных книг.")
+            if not rows:
+                label = QLabel("У вас пока нет истории выдач.")
                 label.setStyleSheet("font-size: 14pt; color: #555;")
                 self.content_layout.addWidget(label)
                 return
 
-            for book in books:
-                self.content_layout.addWidget(BookCard(book, role="User"))
+            # 3. Создаём карточки
+            for book in rows:
+                self.content_layout.addWidget(self.build_card(book))
 
         except Exception as e:
             print("Ошибка загрузки выданных книг:", e)
+
+    def build_card(self, data):
+        (
+            book_id, title, author, genre, publisher, year,
+            description, cover,
+            borrow_date, due_date, return_date, status
+        ) = data
+
+        # ---------------------------
+        # Определяем статус
+        # ---------------------------
+        today = QDate.currentDate()
+        due = QDate.fromString(due_date, "yyyy-MM-dd")
+        status_text = ""
+        color = "black"
+
+        if return_date is None:
+            # Книга на руках
+            if today > due:
+                status_text = f"Просрочена! Нужно было вернуть до {due_date}"
+                color = "red"
+            else:
+                status_text = f"Вернуть до {due_date}"
+                color = "orange"
+        else:
+            status_text = f"Возвращена {return_date}"
+            color = "green"
+
+        # ---------------------------
+        # Виджет карточки
+        # ---------------------------
+        frame = QFrame()
+        frame.setFrameShape(QFrame.Box)
+        frame.setStyleSheet("padding: 10px; background: #fafafa;")
+        layout = QVBoxLayout(frame)
+
+        text = f"""
+        <b>{title}</b><br>
+        Автор: {author}<br>
+        Жанр: {genre}<br>
+        Издательство: {publisher}, {year}<br><br>
+        Дата выдачи: {borrow_date}<br>
+        <span style="color:{color}">{status_text}</span>
+        """
+
+        label = QLabel(text)
+        label.setStyleSheet("font-size: 12pt;")
+        label.setWordWrap(True)
+        layout.addWidget(label)
+
+        return frame

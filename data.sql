@@ -53,12 +53,14 @@ CREATE TABLE Statuses (
 -- ===========================
 -- 6. Выдачи книг
 -- ===========================
+
 CREATE TABLE Borrowings (
     BorrowingID INTEGER PRIMARY KEY AUTOINCREMENT,
     UserID INTEGER NOT NULL,
-    BorrowDate TEXT NOT NULL,
-    ReturnDate TEXT,
-    StatusID INTEGER,
+    BorrowDate TEXT NOT NULL,      -- когда взял
+    DueDate TEXT NOT NULL,         -- до какого должен вернуть
+    ReturnDate TEXT,               -- когда вернул (NULL = ещё не вернул)
+    StatusID INTEGER NOT NULL,     -- 1-обработке, 2-выдана, 3-просрочена, 4-возвращена
     FOREIGN KEY (UserID) REFERENCES Users(UserID),
     FOREIGN KEY (StatusID) REFERENCES Statuses(StatusID)
 );
@@ -133,12 +135,22 @@ INSERT INTO Statuses (StatusName) VALUES
 
 -- ======================================
 -- 6. Выдачи книг (Borrowings)
--- Берём читателей с UserID = 1 и 2
 -- ======================================
-INSERT INTO Borrowings (UserID, BorrowDate, ReturnDate, StatusID) VALUES
-(1, '2024-01-10', '2024-01-25', 2),   -- выдано
-(2, '2024-01-15', NULL, 1),           -- оформлена, ещё не выдана
-(1, '2024-02-01', NULL, 1);           -- оформлена
+INSERT INTO Borrowings (UserID, BorrowDate, DueDate, ReturnDate, StatusID) VALUES
+-- 1. Пользователь 1 вернул книгу вовремя
+(1, '2024-03-01', '2024-03-15', '2024-03-14', 4),
+
+-- 2. Пользователь 2 взял книгу, она сейчас "на руках" (выдана)
+(2, '2024-03-20', '2024-04-03', NULL, 2),
+
+-- 3. Пользователь 1 подал заявку, она еще "в обработке"
+(1, '2026-03-28', '2026-04-11', NULL, 1),
+
+-- 4. Просроченная выдача (дата возврата DueDate уже прошла, ReturnDate пуст)
+(2, '2024-02-01', '2024-02-15', NULL, 3),
+
+-- 5. Пользователь 2 вернул книгу, но с опозданием
+(2, '2024-01-10', '2024-01-24', '2024-01-30', 4);
 
 
 -- ======================================

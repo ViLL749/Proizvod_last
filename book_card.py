@@ -46,6 +46,26 @@ class BookCard(QFrame):
         # Действия
         right_layout = QVBoxLayout()
         right_layout.setAlignment(Qt.AlignTop)
+
+        if role == "Librarian":
+            btn_issue = QPushButton("Выдать")
+            btn_issue.setStyleSheet("""
+                QPushButton {
+                    background-color: #32CD32;
+                    color: white;
+                    font-family: 'Times New Roman';
+                    font-weight: bold;
+                    padding: 6px;
+                    border-radius: 4px;
+                }
+                QPushButton:hover {
+                    background-color: #28a428;
+                }
+            """)
+            btn_issue.setFixedWidth(100)
+            btn_issue.clicked.connect(self.issue_book)
+            right_layout.addWidget(btn_issue, alignment=Qt.AlignTop)
+
         if role == "Admin":
             right_layout.addSpacing(10)
 
@@ -87,6 +107,14 @@ class BookCard(QFrame):
             right_layout.addWidget(self.btn_delete)
 
         main_layout.addLayout(right_layout)
+
+    def issue_book(self):
+        from issue_book_window import IssueBookWindow
+        dlg = IssueBookWindow(self.book_data[0])
+        if dlg.exec_():
+            parent_window = self.window()
+            if hasattr(parent_window, "load_books"):
+                parent_window.load_books()
 
     def delete_book(self):
         reply = QMessageBox.question(self, "Удаление", f"Удалить книгу {self.book_data[1]}?",
