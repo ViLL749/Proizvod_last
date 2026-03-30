@@ -117,18 +117,46 @@ class BookCard(QFrame):
                 parent_window.load_books()
 
     def delete_book(self):
-        reply = QMessageBox.question(self, "Удаление", f"Удалить книгу {self.book_data[1]}?",
-                                     QMessageBox.Yes|QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            try:
-                conn = get_db_connection()
-                cur = conn.cursor()
-                cur.execute("DELETE FROM Books WHERE BookID=?", (self.book_id,))
-                conn.commit()
-                conn.close()
-                self.hide()
-            except Exception as e:
-                QMessageBox.critical(self, "Ошибка", str(e))
+        reply = QMessageBox.question(
+            self, "Удаление", f"Удалить книгу {self.book_data[1]}?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+
+            # 1. Получаем все BorrowingItems с этой книгой
+            cur.execute("SELECT BorrowingID, Quantity FROM BorrowingItems WHERE BookID=?", (self.book_id,))
+            items = cur.fetchall()
+
+            for borrowing_id, qty in items:
+                # 2. Возвращаем книги на склад (увеличиваем Quantity)
+                cur.execute("UPDATE Books SET Quantity = Quantity + ? WHERE BookID=?", (qty, self.book_id))
+
+                # 3. Удаляем запись из BorrowingItems
+                cur.execute("DELETE FROM BorrowingItems WHERE BorrowingID=? AND BookID=?", (borrowing_id, self.book_id))
+
+                # 4. Проверяем, остались ли книги в BorrowingItems для этого BorrowingID
+                cur.execute("SELECT COUNT(*) FROM BorrowingItems WHERE BorrowingID=?", (borrowing_id,))
+                count = cur.fetchone()[0]
+                if count == 0:
+                    # если нет, удаляем сам Borrowings
+                    cur.execute("DELETE FROM Borrowings WHERE BorrowingID=?", (borrowing_id,))
+
+            # 5. Удаляем книгу из Books
+            cur.execute("DELETE FROM Books WHERE BookID=?", (self.book_id,))
+
+            conn.commit()
+            conn.close()
+
+            # Скрываем карточку
+            self.hide()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", str(e))
 
     def edit_book(self):
         form = BookForm(self.book_data)

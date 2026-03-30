@@ -77,7 +77,7 @@ class ReadersWindow(QWidget):
 
         btn_delete = QPushButton("Удалить")
         btn_delete.setStyleSheet("background:#d9534f; color:white; padding:6px;")
-        btn_delete.clicked.connect(lambda: self.delete_reader(user_id))
+        btn_delete.clicked.connect(lambda checked, uid=user_id: self.delete_reader(uid))
 
         btns.addWidget(btn_edit)
         btns.addWidget(btn_delete)
@@ -95,16 +95,44 @@ class ReadersWindow(QWidget):
         if form.exec_():
             self.load_readers()
 
-    def delete_reader(self, user_id):
-        reply = QMessageBox.question(self, "Удаление", "Удалить этого читателя?",
-                                     QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            try:
-                conn = get_db_connection()
-                cur = conn.cursor()
-                cur.execute("DELETE FROM Users WHERE UserID=?", (user_id,))
-                conn.commit()
-                conn.close()
-                self.load_readers()
-            except Exception as e:
-                QMessageBox.critical(self, "Ошибка", str(e))
+    def delete_reader(self, reader_id):
+        # 1. Подтверждение удаления
+        reply = QMessageBox.question(
+            self, "Удаление", "Удалить читателя и все его записи о взятых книгах?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+
+            # 2. Получаем все записи Borrowings этого читателя
+            cur.execute("SELECT BorrowingID FROM Borrowings WHERE UserID=?", (reader_id,))
+            borrowings = cur.fetchall()
+
+            for (borrowing_id,) in borrowings:
+                # 3. Для каждой записи возвращаем книги на склад
+                cur.execute("SELECT BookID, Quantity FROM BorrowingItems WHERE BorrowingID=?", (borrowing_id,))
+                items = cur.fetchall()
+                for book_id, qty in items:
+                    cur.execute("UPDATE Books SET Quantity = Quantity + ? WHERE BookID=?", (qty, book_id))
+
+                # 4. Удаляем связанные BorrowingItems
+                cur.execute("DELETE FROM BorrowingItems WHERE BorrowingID=?", (borrowing_id,))
+
+            # 5. Удаляем сами Borrowings
+            cur.execute("DELETE FROM Borrowings WHERE UserID=?", (reader_id,))
+
+            # 6. Удаляем пользователя
+            cur.execute("DELETE FROM Users WHERE UserID=?", (reader_id,))
+
+            conn.commit()
+            conn.close()
+
+            # 7. Перезагрузка списка читателей
+            self.load_readers()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", str(e))
