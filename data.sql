@@ -170,3 +170,8 @@ INSERT INTO BorrowingItems (BorrowingID, BookID, Quantity) VALUES
 -- Выдача #3 (читатель #1)
 (3, 7, 1);   -- Три мушкетёра
 
+-- Создаем таблицу издательств
+CREATE TABLE Publishers (
+    PublisherID INTEGER PRIMARY KEY AUTOINCREMENT,
+    PublisherName TEXT NOT NULL UNIQUE
+);

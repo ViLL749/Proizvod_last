@@ -1,7 +1,8 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QPushButton, QLineEdit, QComboBox
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QPushButton, QLineEdit, QComboBox, \
+    QMessageBox
 from PyQt5.QtGui import QPixmap, QIcon
 from PyQt5.QtCore import Qt
-
+from publishers_window import PublishersWindow
 from borrowings_window import BorrowingsWindow
 from db_manager import get_db_connection
 from book_card import BookCard
@@ -122,6 +123,26 @@ class BookWindow(QWidget):
             btn_readers.clicked.connect(self.open_readers_window)
             header_layout.addWidget(btn_readers)
 
+        # Кнопка управления издательствами (только для Admin)
+        if role == "Admin":
+            btn_manage_pub = QPushButton("Управление издателями")
+            btn_manage_pub.setStyleSheet("""
+                QPushButton {
+                    background-color: #00bfff;
+                    color: white;
+                    font-family: 'Times New Roman';
+                    font-weight: bold;
+                    padding: 6px;
+                    border-radius: 4px;
+                }
+                QPushButton:hover {
+                    background-color: #0099cc;
+                }
+            """)
+
+            btn_manage_pub.clicked.connect(self.open_publishers)
+            header_layout.addWidget(btn_manage_pub)
+
         if role == "Librarian":
             btn_borrowings = QPushButton("Управление выдачами")
             btn_borrowings.clicked.connect(self.open_borrowings_window)
@@ -167,6 +188,13 @@ class BookWindow(QWidget):
 
         self.load_books()
 
+    def open_publishers(self):
+        try:
+            self.pub_win = PublishersWindow()
+            self.pub_win.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось открыть окно издателей: {e}")
+
     def open_readers_window(self):
         self.readers_win = ReadersWindow()
         self.readers_win.show()
@@ -193,21 +221,40 @@ class BookWindow(QWidget):
         try:
             conn = get_db_connection()
             cur = conn.cursor()
-            query = "SELECT BookID, Title, Author, GenreID, Publisher, Year, Quantity, Description, CoverImage FROM Books"
+
+            #  берем PublisherName
+            query = """
+                SELECT 
+                    b.BookID, 
+                    b.Title, 
+                    b.Author, 
+                    b.GenreID, 
+                    p.PublisherName, 
+                    b.Year, 
+                    b.Quantity, 
+                    b.Description, 
+                    b.CoverImage 
+                FROM Books b
+                LEFT JOIN Publishers p ON b.PublisherID = p.PublisherID
+            """
+
             params = []
             genre_id = self.genre_filter.currentData()
             if genre_id:
-                query += " WHERE GenreID=?"
+                query += " WHERE b.GenreID=?"
                 params.append(genre_id)
+
             cur.execute(query, params)
             books = cur.fetchall()
             conn.close()
+
             for b in books:
                 self.content_layout.addWidget(BookCard(b, self.role))
             if hasattr(self, "search_input"):
                 self.highlight_search()
         except Exception as e:
             print("Ошибка загрузки:", e)
+
 
     def add_book(self):
         form = BookForm()
